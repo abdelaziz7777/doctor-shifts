@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin – Egypt Shift Rates</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&display=swap" rel="stylesheet">
+<style>body{font-family:Manrope,system-ui,sans-serif}.leaflet-container{background:#dbeaee}input[type=number]{width:100%}</style>
+</head>
+<body class="bg-slate-100 text-slate-800">
+<div class="flex flex-col lg:flex-row min-h-screen">
+<aside class="lg:w-80 bg-[#0b3b45] text-white p-5 space-y-5 lg:sticky lg:top-0 lg:h-screen overflow-y-auto">
+  <div class="flex items-center gap-2"><i class="fa-solid fa-sliders text-teal-300 text-2xl"></i><div><div class="font-extrabold leading-tight">Rate Admin</div><div class="text-xs text-teal-200">Changes save instantly</div></div></div>
+  <label class="block text-sm">Governorate<select id="gSel" class="block w-full mt-1 text-slate-900 rounded-md px-2 py-2"></select></label>
+  <label class="block text-sm">District (Markaz)<select id="mSel" class="block w-full mt-1 text-slate-900 rounded-md px-2 py-2"></select></label>
+  <div class="border-t border-teal-700 pt-4 space-y-2">
+    <div class="text-sm font-extrabold">Data tools</div>
+    <button id="bExp" class="w-full bg-teal-600 hover:bg-teal-500 rounded-md py-2 text-sm"><i class="fa-solid fa-download mr-1"></i>Export Data (JSON)</button>
+    <button id="bImp" class="w-full bg-teal-600 hover:bg-teal-500 rounded-md py-2 text-sm"><i class="fa-solid fa-upload mr-1"></i>Import Data (JSON)</button>
+    <input id="file" type="file" accept=".json,application/json" class="hidden">
+    <button id="bReset" class="w-full bg-red-600 hover:bg-red-500 rounded-md py-2 text-sm"><i class="fa-solid fa-rotate-left mr-1"></i>Reset to Default Data</button>
+  </div>
+  <a href="index.html" class="block text-center text-sm text-teal-200 underline">Open public view</a>
+</aside>
+<main class="flex-1 p-4 lg:p-6 space-y-4">
+  <div id="map" class="h-72 rounded-xl shadow border border-slate-200"></div>
+  <section class="bg-white rounded-xl shadow border border-slate-200 p-4">
+    <div class="flex flex-wrap items-center gap-3 mb-3">
+      <div class="flex-1"><h1 id="title" class="text-xl font-extrabold text-[#0b3b45]"></h1><div id="sub" class="text-xs text-slate-500"></div></div>
+      <div class="inline-flex rounded-lg overflow-hidden border border-slate-300 text-sm">
+        <button data-d="0" class="tab px-4 py-1.5">12 Hours</button><button data-d="1" class="tab px-4 py-1.5">24 Hours</button></div>
+    </div>
+    <div class="overflow-x-auto"><table class="w-full text-sm"><thead id="thead"></thead><tbody id="tbody"></tbody></table></div>
+    <div class="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t">
+      <span class="text-sm">Adjust all rates in this region by</span>
+      <input id="pct" type="number" value="10" class="w-20 border rounded-md px-2 py-1"><span class="text-sm">%</span>
+      <button id="bPct" class="bg-[#0b3b45] text-white rounded-md px-3 py-1.5 text-sm">Apply adjustment</button>
+      <button id="bCopy" class="ml-auto border border-[#0b3b45] text-[#0b3b45] rounded-md px-3 py-1.5 text-sm">Copy governorate rates to all its districts</button>
+    </div>
+  </section>
+</main></div>
+<div id="toast" class="fixed bottom-4 right-4 bg-slate-900 text-white px-4 py-2 rounded-lg text-sm opacity-0 transition-opacity pointer-events-none"></div>
+<script>
+/* ---- shared data model (identical in index.html) ---- */
+const SPEC={Emergency:900,ICU:1100,Pediatrics:800,"General Surgery":1000,"Internal Medicine":800,"OB/GYN":1000};
+const RANK={Intern:[.4,"Intern / امتياز"],GP:[.6,"GP / طبيب عام"],Resident:[.8,"Resident / مقيم"],Specialist:[1.2,"Specialist / أخصائي"],Consultant:[1.8,"Consultant / استشاري"]};
+const G=[["Cairo",30.05,31.3,14,1.25,"Nasr City,Heliopolis,Maadi,Shubra,El Marg"],["Giza",29.75,31.05,28,1.15,"Dokki,Imbaba,6th of October,Hawamdeya,Atfih,El Saf"],["Alexandria",31.1,29.8,22,1.2,"Montaza,Sidi Gaber,Borg El Arab,Agamy,Amreya"],["Qalyubia",30.35,31.2,15,1,"Benha,Shubra El Kheima,Qalyub,Khanka,Toukh"],["Port Said",31.2,32.3,14,1,"Port Fouad,El Manakh,El Zohour"],["Suez",29.95,32.55,22,1.05,"Arbaeen,Ataka,Faisal"],["Ismailia",30.6,32.2,28,1,"Ismailia City,Fayed,Qantara"],["Damietta",31.4,31.75,14,.95,"Damietta City,Faraskur,Kafr Saad,Ras El Bar"],["Dakahlia",31.1,31.5,28,.95,"Mansoura,Talkha,Mit Ghamr,Belqas,Aga"],["Sharqia",30.6,31.6,32,.95,"Zagazig,10th of Ramadan,Belbeis,Abu Hammad,Minya Al Qamh"],["Gharbia",30.8,31,20,.93,"Tanta,El Mahalla El Kubra,Kafr El Zayat,Zefta,Samannoud"],["Kafr El Sheikh",31.3,30.9,24,.9,"Kafr El Sheikh City,Desouk,Baltim,Sidi Salem"],["Monufia",30.5,30.95,24,.92,"Shebin El Kom,Menouf,Ashmoun,Sadat City,Quesna"],["Beheira",30.8,30.3,45,.92,"Damanhur,Kafr El Dawwar,Rashid,Abu Hummus,Edku"],["Fayoum",29.3,30.8,38,.88,"Fayoum City,Sennuris,Tamiya,Ibsheway"],["Beni Suef",29,31.2,30,.88,"Beni Suef City,Biba,Nasser,El Wasta"],["Minya",28.2,30.7,40,.85,"Minya City,Mallawi,Samalut,Beni Mazar,Maghagha"],["Assiut",27.2,31.1,42,.85,"Assiut City,Abnub,Manfalut,Dairut,El Qusiya"],["Sohag",26.55,31.7,38,.85,"Sohag City,Akhmim,Girga,Tahta,Tima"],["Qena",26.15,32.7,38,.85,"Qena City,Nag Hammadi,Dishna,Qus,Farshut"],["Luxor",25.7,32.65,22,1,"Luxor City,Esna,Armant,Tiba"],["Aswan",24.2,32.9,55,.95,"Aswan City,Edfu,Kom Ombo,Daraw,Nasr El Nuba"],["Red Sea",26.5,33.8,90,1.3,"Hurghada,Safaga,Quseir,Marsa Alam"],["New Valley",25.5,29.5,130,.9,"Kharga,Dakhla,Farafra,Baris"],["Matrouh",30,27.2,120,.95,"Marsa Matrouh,El Alamein,Siwa,Sidi Barrani"],["North Sinai",30.8,33.5,55,.9,"Arish,Sheikh Zuweid,Rafah,Bir al-Abd"],["South Sinai",28.8,33.9,75,1.3,"Sharm El Sheikh,Dahab,El Tor,Saint Catherine"]].map(a=>({n:a[0],lat:a[1],lng:a[2],r:a[3],f:a[4],m:a[5].split(",")}));
+const KEY="egShiftRates.v1";
+const mpos=(g,i)=>{const a=2*Math.PI*i/g.m.length+.5,d=g.r*.55;return[g.lat+d*Math.sin(a)/111,g.lng+d*Math.cos(a)/(111*Math.cos(g.lat*Math.PI/180))]};
+function gen(){const rates={};G.forEach(g=>{[[g.n,g.f]].concat(g.m.map(m=>[g.n+"|"+m,g.f*(.88+(([...m].reduce((s,c)=>s+c.charCodeAt(0),0))%15)/100)])).forEach(([k,f])=>{rates[k]={};for(const s in SPEC){rates[k][s]={};for(const r in RANK){const v=Math.round(SPEC[s]*RANK[r][0]*f/10)*10;rates[k][s][r]=[v,Math.round(v*1.7/10)*10]}}})});return{v:1,rates}}
+function load(){try{const d=JSON.parse(localStorage.getItem(KEY));if(d&&d.rates)return d}catch(e){}const d=gen();try{localStorage.setItem(KEY,JSON.stringify(d))}catch(e){}return d}
+/* ---- admin app ---- */
+let data=load();const st={g:G[0],m:"",d:0};
+const $=id=>document.getElementById(id),key=()=>st.m?st.g.n+"|"+st.m:st.g.n;
+function save(){try{localStorage.setItem(KEY,JSON.stringify(data));toast("Saved. The public view is updated.")}catch(e){toast("Could not save: browser storage is unavailable.")}}
+let tt;function toast(t){const e=$("toast");e.textContent=t;e.style.opacity=1;clearTimeout(tt);tt=setTimeout(()=>e.style.opacity=0,2000)}
+$("gSel").innerHTML=G.map(g=>`<option>${g.n}</option>`).join("");
+const map=L.map("map",{minZoom:5,maxBounds:[[21,24],[32.5,37.5]],maxBoundsViscosity:1}).fitBounds([[22,25],[31.8,36.5]]);
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom',
+    maxZoom: 18
+}).addTo(map);
+const mg=L.layerGroup(),gl={},ml={};
+G.forEach(g=>{gl[g.n]=L.circle([g.lat,g.lng],{radius:g.r*1000}).addTo(map).bindTooltip(g.n,{sticky:true}).on("click",()=>pick(g.n,""));
+  g.m.forEach((m,i)=>ml[g.n+"|"+m]=L.circleMarker(mpos(g,i),{radius:8}).bindTooltip(m+" ("+g.n+")",{sticky:true}).on("click",e=>{L.DomEvent.stopPropagation(e);pick(g.n,m)}).addTo(mg))});
+const zc=()=>map.getZoom()>=7?mg.addTo(map):map.removeLayer(mg);map.on("zoomend",zc);zc();
+function pick(gn,m,fit){st.g=G.find(g=>g.n==gn);st.m=m;render();if(fit!==false){m?map.setView(ml[gn+"|"+m].getLatLng(),Math.max(map.getZoom(),9)):map.fitBounds(gl[gn].getBounds(),{maxZoom:8})}}
+function render(){
+  $("gSel").value=st.g.n;$("mSel").innerHTML=`<option value="">— Whole governorate —</option>`+st.g.m.map(m=>`<option>${m}</option>`).join("");$("mSel").value=st.m;
+  G.forEach(g=>{const s=g===st.g&&!st.m;gl[g.n].setStyle({color:g===st.g?"#b45309":"#fff",weight:g===st.g?3:1.5,fillColor:s?"#f59e0b":g===st.g?"#fcd34d":"#0f766e",fillOpacity:.45});
+    g.m.forEach(m=>{const s=g===st.g&&st.m===m;ml[g.n+"|"+m].setStyle({color:"#fff",weight:2,fillColor:s?"#b45309":"#0b3b45",fillOpacity:.95})})});
+  $("title").textContent=st.m?`${st.m}, ${st.g.n}`:st.g.n;$("sub").textContent=(st.m?"District (Markaz) rates":"Governorate-level rates")+" in EGP per shift";
+  document.querySelectorAll(".tab").forEach(b=>b.className="tab px-4 py-1.5 "+(+b.dataset.d===st.d?"bg-[#0b3b45] text-white":"bg-white"));
+  $("thead").innerHTML=`<tr class="text-left text-slate-500"><th class="py-2 pr-2">Specialty</th>${Object.keys(RANK).map(r=>`<th class="px-1">${RANK[r][1]}</th>`).join("")}</tr>`;
+  const k=key();if(!data.rates[k])data.rates[k]=gen().rates[k];
+  $("tbody").innerHTML=Object.keys(SPEC).map(s=>`<tr class="border-t"><td class="py-2 pr-2 font-semibold">${s}</td>${Object.keys(RANK).map(r=>`<td class="p-1"><input type="number" min="0" step="10" data-s="${s}" data-r="${r}" value="${data.rates[k][s][r][st.d]}" class="border rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-teal-600"></td>`).join("")}</tr>`).join("");
+}
+$("tbody").addEventListener("change",e=>{const i=e.target;if(!i.dataset.s)return;const v=Math.max(0,Math.round(+i.value||0));i.value=v;data.rates[key()][i.dataset.s][i.dataset.r][st.d]=v;save()});
+document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{st.d=+b.dataset.d;render()});
+$("gSel").onchange=e=>pick(e.target.value,"");$("mSel").onchange=e=>pick(st.g.n,e.target.value);
+$("bPct").onclick=()=>{const p=+$("pct").value;if(!isFinite(p)||p<=-100)return toast("Enter a percentage greater than -100.");const k=key();for(const s in SPEC)for(const r in RANK)data.rates[k][s][r]=data.rates[k][s][r].map(v=>Math.max(0,Math.round(v*(1+p/100)/10)*10));save();render()};
+$("bCopy").onclick=()=>{if(st.m)return toast("Select the whole governorate first.");if(!confirm(`Overwrite all ${st.g.n} district rates with the governorate rates?`))return;st.g.m.forEach(m=>data.rates[st.g.n+"|"+m]=JSON.parse(JSON.stringify(data.rates[st.g.n])));save();toast("Copied to all districts.")};
+$("bExp").onclick=()=>{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:"application/json"}));a.download="egypt-shift-rates-"+new Date().toISOString().slice(0,10)+".json";a.click();URL.revokeObjectURL(a.href)};
+$("bImp").onclick=()=>$("file").click();
+$("file").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!d||typeof d.rates!=="object"||!d.rates[G[0].n])throw 0;const base=gen().rates;for(const k in base)if(!d.rates[k])d.rates[k]=base[k];data=d;save();render();toast("Import complete.")}catch(x){toast("Import failed: the file is not a valid rates backup.")}};r.readAsText(f);e.target.value=""};
+$("bReset").onclick=()=>{if(confirm("Reset every rate to the default dataset? This cannot be undone.")){data=gen();save();render();toast("Default data restored.")}};
+window.addEventListener("storage",e=>{if(e.key===KEY){data=load();render()}});
+render();
+</script></body></html>

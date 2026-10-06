@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Egypt Medical Shift Rates</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&display=swap" rel="stylesheet">
+<style>body{font-family:Manrope,system-ui,sans-serif}.leaflet-container{background:#dbeaee}.leaflet-tooltip{border:0;border-radius:10px;box-shadow:0 6px 20px #0b3b4540;padding:8px 12px}</style>
+</head>
+<body class="bg-slate-100 text-slate-800">
+<header class="bg-[#0b3b45] text-white px-4 py-3">
+  <div class="flex flex-wrap items-center gap-4">
+    <div class="flex items-center gap-2 mr-4"><i class="fa-solid fa-user-doctor text-teal-300 text-2xl"></i>
+      <div><div class="font-extrabold leading-tight">Egypt Shift Rates</div><div class="text-xs text-teal-200">Fair pay for doctors, by region</div></div></div>
+    <label class="text-xs">Specialty<select id="fSpec" class="block mt-1 text-slate-900 rounded-md px-2 py-1.5 text-sm"></select></label>
+    <label class="text-xs">Rank<select id="fRank" class="block mt-1 text-slate-900 rounded-md px-2 py-1.5 text-sm"></select></label>
+    <label class="text-xs">Shift duration<select id="fDur" class="block mt-1 text-slate-900 rounded-md px-2 py-1.5 text-sm"><option value="12">12 Hours</option><option value="24">24 Hours</option></select></label>
+  </div>
+</header>
+<main class="flex flex-col lg:flex-row lg:h-[calc(100vh-76px)]">
+  <div id="map" class="h-[60vh] lg:h-auto lg:flex-1"></div>
+  <aside class="lg:w-[26rem] overflow-y-auto p-4 space-y-4 bg-white border-l border-slate-200">
+    <section>
+      <h2 class="font-extrabold text-sm text-slate-500 mb-2">All of Egypt (governorate level)</h2>
+      <div class="grid grid-cols-3 gap-2 text-center" id="nat"></div>
+    </section>
+    <section>
+      <h2 class="font-extrabold text-sm text-slate-500 mb-2">Rate scale across governorates</h2>
+      <div class="h-3 rounded-full" style="background:linear-gradient(90deg,hsl(0,70%,45%),hsl(60,70%,45%),hsl(120,70%,45%))"></div>
+      <div class="flex justify-between text-xs mt-1 text-slate-500"><span id="lgMin"></span><span id="lgMax"></span></div>
+    </section>
+    <section id="panel" class="border-t pt-4"></section>
+  </aside>
+</main>
+<script>
+/* ---- shared data model (identical in admin.html) ---- */
+const SPEC={Emergency:900,ICU:1100,Pediatrics:800,"General Surgery":1000,"Internal Medicine":800,"OB/GYN":1000};
+const RANK={Intern:[.4,"Intern / امتياز"],GP:[.6,"GP / طبيب عام"],Resident:[.8,"Resident / مقيم"],Specialist:[1.2,"Specialist / أخصائي"],Consultant:[1.8,"Consultant / استشاري"]};
+const G=[["Cairo",30.05,31.3,14,1.25,"Nasr City,Heliopolis,Maadi,Shubra,El Marg"],["Giza",29.75,31.05,28,1.15,"Dokki,Imbaba,6th of October,Hawamdeya,Atfih,El Saf"],["Alexandria",31.1,29.8,22,1.2,"Montaza,Sidi Gaber,Borg El Arab,Agamy,Amreya"],["Qalyubia",30.35,31.2,15,1,"Benha,Shubra El Kheima,Qalyub,Khanka,Toukh"],["Port Said",31.2,32.3,14,1,"Port Fouad,El Manakh,El Zohour"],["Suez",29.95,32.55,22,1.05,"Arbaeen,Ataka,Faisal"],["Ismailia",30.6,32.2,28,1,"Ismailia City,Fayed,Qantara"],["Damietta",31.4,31.75,14,.95,"Damietta City,Faraskur,Kafr Saad,Ras El Bar"],["Dakahlia",31.1,31.5,28,.95,"Mansoura,Talkha,Mit Ghamr,Belqas,Aga"],["Sharqia",30.6,31.6,32,.95,"Zagazig,10th of Ramadan,Belbeis,Abu Hammad,Minya Al Qamh"],["Gharbia",30.8,31,20,.93,"Tanta,El Mahalla El Kubra,Kafr El Zayat,Zefta,Samannoud"],["Kafr El Sheikh",31.3,30.9,24,.9,"Kafr El Sheikh City,Desouk,Baltim,Sidi Salem"],["Monufia",30.5,30.95,24,.92,"Shebin El Kom,Menouf,Ashmoun,Sadat City,Quesna"],["Beheira",30.8,30.3,45,.92,"Damanhur,Kafr El Dawwar,Rashid,Abu Hummus,Edku"],["Fayoum",29.3,30.8,38,.88,"Fayoum City,Sennuris,Tamiya,Ibsheway"],["Beni Suef",29,31.2,30,.88,"Beni Suef City,Biba,Nasser,El Wasta"],["Minya",28.2,30.7,40,.85,"Minya City,Mallawi,Samalut,Beni Mazar,Maghagha"],["Assiut",27.2,31.1,42,.85,"Assiut City,Abnub,Manfalut,Dairut,El Qusiya"],["Sohag",26.55,31.7,38,.85,"Sohag City,Akhmim,Girga,Tahta,Tima"],["Qena",26.15,32.7,38,.85,"Qena City,Nag Hammadi,Dishna,Qus,Farshut"],["Luxor",25.7,32.65,22,1,"Luxor City,Esna,Armant,Tiba"],["Aswan",24.2,32.9,55,.95,"Aswan City,Edfu,Kom Ombo,Daraw,Nasr El Nuba"],["Red Sea",26.5,33.8,90,1.3,"Hurghada,Safaga,Quseir,Marsa Alam"],["New Valley",25.5,29.5,130,.9,"Kharga,Dakhla,Farafra,Baris"],["Matrouh",30,27.2,120,.95,"Marsa Matrouh,El Alamein,Siwa,Sidi Barrani"],["North Sinai",30.8,33.5,55,.9,"Arish,Sheikh Zuweid,Rafah,Bir al-Abd"],["South Sinai",28.8,33.9,75,1.3,"Sharm El Sheikh,Dahab,El Tor,Saint Catherine"]].map(a=>({n:a[0],lat:a[1],lng:a[2],r:a[3],f:a[4],m:a[5].split(",")}));
+const KEY="egShiftRates.v1";
+const mpos=(g,i)=>{const a=2*Math.PI*i/g.m.length+.5,d=g.r*.55;return[g.lat+d*Math.sin(a)/111,g.lng+d*Math.cos(a)/(111*Math.cos(g.lat*Math.PI/180))]};
+function gen(){const rates={};G.forEach(g=>{[[g.n,g.f]].concat(g.m.map(m=>[g.n+"|"+m,g.f*(.88+(([...m].reduce((s,c)=>s+c.charCodeAt(0),0))%15)/100)])).forEach(([k,f])=>{rates[k]={};for(const s in SPEC){rates[k][s]={};for(const r in RANK){const v=Math.round(SPEC[s]*RANK[r][0]*f/10)*10;rates[k][s][r]=[v,Math.round(v*1.7/10)*10]}}})});return{v:1,rates}}
+function load(){try{const d=JSON.parse(localStorage.getItem(KEY));if(d&&d.rates)return d}catch(e){}const d=gen();try{localStorage.setItem(KEY,JSON.stringify(d))}catch(e){}return d}
+/* ---- app ---- */
+let data=load();const st={spec:"Emergency",rank:"Specialist",dur:12,g:null,m:null};
+const $=id=>document.getElementById(id),fmt=n=>Math.round(n).toLocaleString("en-US")+" EGP";
+$("fSpec").innerHTML=Object.keys(SPEC).map(s=>`<option>${s}</option>`).join("");
+$("fRank").innerHTML=Object.keys(RANK).map(r=>`<option value="${r}">${RANK[r][1]}</option>`).join("");
+$("fRank").value="Specialist";
+["fSpec","fRank","fDur"].forEach(id=>$(id).onchange=()=>{st.spec=$("fSpec").value;st.rank=$("fRank").value;st.dur=+$("fDur").value;refresh()});
+const rate=k=>{const a=data.rates[k]?.[st.spec]?.[st.rank];return a?a[st.dur==12?0:1]:null};
+const gKeys=g=>[g.n,...g.m.map(m=>g.n+"|"+m)];
+function stats(v){v=v.filter(x=>x!=null).sort((a,b)=>a-b);if(!v.length)return{avg:0,min:0,max:0,rec:0};const med=v.length%2?v[v.length>>1]:(v[v.length/2-1]+v[v.length/2])/2;return{avg:v.reduce((a,b)=>a+b,0)/v.length,min:v[0],max:v[v.length-1],rec:Math.round(med/50)*50}}
+let lo=0,hi=1;const color=v=>`hsl(${Math.max(0,Math.min(1,(v-lo)/((hi-lo)||1)))*120},70%,45%)`;
+const map=L.map("map",{minZoom:5,maxBounds:[[21,24],[32.5,37.5]],maxBoundsViscosity:1}).fitBounds([[22,25],[31.8,36.5]]);
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom',
+    maxZoom: 18
+}).addTo(map);
+const mg=L.layerGroup();const gl={},ml={};
+const tip=(title,k,sub)=>`<div class="font-extrabold">${title}</div><div class="text-xs text-slate-500">${sub} · ${st.spec} · ${RANK[st.rank][1].split(" /")[0]} · ${st.dur}h</div><div class="text-lg font-extrabold" style="color:#0b3b45">${rate(k)==null?"No data":fmt(rate(k))}</div>`;
+G.forEach(g=>{
+  gl[g.n]=L.circle([g.lat,g.lng],{radius:g.r*1000}).addTo(map).bindTooltip(()=>{const s=stats(gKeys(g).map(rate));return tip(g.n,g.n,"Governorate")+`<div class="text-xs">Avg ${fmt(s.avg)} · Min ${fmt(s.min)}</div>`},{sticky:true})
+    .on("click",()=>select(g,null)).on("mouseover",e=>e.target.setStyle({weight:4})).on("mouseout",()=>refresh(true));
+  g.m.forEach((m,i)=>{const k=g.n+"|"+m;ml[k]=L.circleMarker(mpos(g,i),{radius:8,color:"#fff",weight:2,fillOpacity:.95}).bindTooltip(()=>tip(m,k,g.n+" · Markaz"),{sticky:true}).on("click",e=>{L.DomEvent.stopPropagation(e);select(g,m)}).addTo(mg)});
+});
+const zoomChk=()=>map.getZoom()>=7?mg.addTo(map):map.removeLayer(mg);map.on("zoomend",zoomChk);zoomChk();
+function select(g,m){st.g=g;st.m=m;if(!m)map.fitBounds(gl[g.n].getBounds(),{maxZoom:8});refresh()}
+function card(l,v,c){return`<div class="rounded-xl p-2 ${c||"bg-slate-100"}"><div class="text-[11px] text-slate-500">${l}</div><div class="font-extrabold text-sm">${v}</div></div>`}
+function refresh(light){
+  const gv=G.map(g=>rate(g.n)).filter(x=>x!=null);lo=Math.min(...gv);hi=Math.max(...gv);
+  $("lgMin").textContent="Lowest "+fmt(lo);$("lgMax").textContent="Highest "+fmt(hi);
+  G.forEach(g=>{const sel=st.g===g;gl[g.n].setStyle({fillColor:color(rate(g.n)),fillOpacity:.55,color:sel?"#0b3b45":"#fff",weight:sel?4:1.5});
+    g.m.forEach(m=>{const k=g.n+"|"+m;ml[k].setStyle({fillColor:color(rate(k)),color:st.g===g&&st.m===m?"#0b3b45":"#fff",weight:st.g===g&&st.m===m?4:2})})});
+  if(light)return;
+  const n=stats(gv);$("nat").innerHTML=card("Average",fmt(n.avg))+card("Minimum",fmt(n.min))+card("Maximum",fmt(n.max));
+  const p=$("panel");
+  if(!st.g){p.innerHTML=`<div class="text-slate-500 text-sm"><i class="fa-solid fa-hand-pointer text-teal-700 mr-1"></i>Hover over a governorate to preview rates, or click one to see its districts. Zoom in to see each Markaz.</div>`;return}
+  const g=st.g,s=stats(gKeys(g).map(rate));
+  const rows=g.m.map(m=>[m,rate(g.n+"|"+m)]).sort((a,b)=>b[1]-a[1]);
+  p.innerHTML=`<h2 class="text-xl font-extrabold text-[#0b3b45]">${g.n}</h2><div class="text-xs text-slate-500 mb-3">${st.spec} · ${RANK[st.rank][1]} · ${st.dur}-hour shift</div>
+  <div class="grid grid-cols-2 gap-2 mb-2">${card("Recommended fair rate",fmt(s.rec),"bg-teal-700 text-white [&>div:first-child]:text-teal-100")}${card("Average",fmt(s.avg))}${card("Minimum",fmt(s.min))}${card("Maximum",fmt(s.max))}</div>
+  ${st.m?`<div class="rounded-xl border-2 border-[#0b3b45] p-2 mb-2"><div class="text-xs text-slate-500">Selected district</div><div class="font-extrabold">${st.m}: ${fmt(rate(g.n+"|"+st.m))}</div></div>`:""}
+  <h3 class="font-extrabold text-sm text-slate-500 mt-3 mb-1">Districts (Markaz)</h3>
+  <div class="space-y-1">${rows.map(([m,v])=>`<button data-m="${m}" class="w-full flex items-center gap-2 text-left text-sm rounded-lg px-2 py-1.5 hover:bg-slate-100 ${st.m===m?"bg-slate-100":""}"><span class="w-3 h-3 rounded-full shrink-0" style="background:${color(v)}"></span><span class="flex-1">${m}</span><b>${fmt(v)}</b></button>`).join("")}</div>`;
+  p.querySelectorAll("[data-m]").forEach(b=>b.onclick=()=>{const m=b.dataset.m;select(g,m);const k=g.n+"|"+m;map.setView(ml[k].getLatLng(),Math.max(map.getZoom(),9))});
+}
+window.addEventListener("storage",e=>{if(e.key===KEY){data=load();refresh()}});
+refresh();
+</script></body></html>
